@@ -23,6 +23,10 @@ Thumbs.db
 .idea/
 .vscode/
 
+# Vercel (lien local du projet, ne pas commiter)
+.vercel/
+**/.vercel/
+
 # Données locales (BDD, uploads) : persistent côté serveur en prod
 backend/data/
 backend/uploads/
