@@ -259,7 +259,7 @@ export default function ReviewTable({
             </tr>
           </thead>
           <tbody>
-            {reviews.map((review, idx) => (
+            {reviews.map((review) => (
               <React.Fragment key={review.id}>
                 <tr
                   ref={(el) => {

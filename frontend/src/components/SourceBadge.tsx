@@ -7,7 +7,7 @@ interface SourceBadgeProps {
   site?: SiteKey;
 }
 
-function SiteLogo({ siteCfg }: { siteCfg: NonNullable<ReturnType<typeof SITE_CONFIG[SiteKey]>> }) {
+function SiteLogo({ siteCfg }: { siteCfg: (typeof SITE_CONFIG)[SiteKey] }) {
   const [err, setErr] = useState(false);
   const src = err ? siteCfg.faviconFallback : siteCfg.favicon;
   return (

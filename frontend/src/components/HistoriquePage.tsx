@@ -1068,64 +1068,6 @@ function SiteHistorique({ site, screenshotsIndex, onUpload, onDelete, savedForSi
   );
 }
 
-// ── Groupes de navigation ─────────────────────────────────────────────────────
-interface NavGroup {
-  brand: string;
-  faviconKey: string; // clé du site dans SITES pour le favicon du groupe
-  items: { key: string; sublabel: string | null }[];
-}
-
-const NAV_GROUPS: NavGroup[] = [
-  {
-    brand: 'Infonet',
-    faviconKey: 'infonet',
-    items: [
-      { key: 'infonet',         sublabel: 'Avis' },
-      { key: 'infonet-60m',     sublabel: '60 Millions' },
-      { key: 'infonet-signal',  sublabel: 'Signal Arnaques' },
-      { key: 'infonet-toxiques',sublabel: 'URLs Toxiques' },
-    ],
-  },
-  {
-    brand: 'DataLegal',
-    faviconKey: 'datalegal',
-    items: [{ key: 'datalegal', sublabel: null }],
-  },
-  {
-    brand: 'Postmee',
-    faviconKey: 'postmee',
-    items: [{ key: 'postmee', sublabel: null }],
-  },
-  {
-    brand: 'Startdoc',
-    faviconKey: 'startdoc',
-    items: [
-      { key: 'startdoc',          sublabel: 'Avis' },
-      { key: 'startdoc-toxiques', sublabel: 'URLs Toxiques' },
-    ],
-  },
-  {
-    brand: 'Wenony',
-    faviconKey: 'wenony',
-    items: [{ key: 'wenony', sublabel: null }],
-  },
-  {
-    brand: 'LesEntreprises',
-    faviconKey: 'lesentreprises',
-    items: [{ key: 'lesentreprises', sublabel: null }],
-  },
-  {
-    brand: 'Lettre Officielle',
-    faviconKey: 'lettreofficielle-toxiques',
-    items: [{ key: 'lettreofficielle-toxiques', sublabel: 'URLs Toxiques' }],
-  },
-  {
-    brand: 'Traitements',
-    faviconKey: 'traitements-risques',
-    items: [{ key: 'traitements-risques', sublabel: 'Risques d\'avis' }],
-  },
-];
-
 // ── Page principale ───────────────────────────────────────────────────────────
 export default function HistoriquePage() {
   const [activeKey, setActiveKey] = useState('infonet');
