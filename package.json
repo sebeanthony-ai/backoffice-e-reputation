@@ -1,0 +1,12 @@
+{
+  "name": "backoffice-e-reputation",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Back office e-réputation — build Vercel depuis la racine du dépôt",
+  "scripts": {
+    "build": "cd frontend && npm install && npm run build",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd backend && npm run dev",
+    "start:backend": "cd backend && npm start"
+  }
+}

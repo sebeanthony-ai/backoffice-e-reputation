@@ -1,0 +1,25 @@
+# Exemple Render.com : Web Service Node + disque pour SQLite / uploads.
+# Ajuster le repo Git et la branche dans le dashboard Render si besoin.
+services:
+  - type: web
+    name: backoffice-e-reputation-api
+    runtime: node
+    region: frankfurt
+    plan: starter
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: DATA_DIR
+        value: /data
+      - key: CORS_ORIGINS
+        sync: false
+      - key: BACKOFFICE_API_KEY
+        sync: false
+    disk:
+      name: bo-data
+      mountPath: /data
+      sizeGB: 1
