@@ -1,11 +1,11 @@
-# Exemple Render.com : Web Service Node + disque pour SQLite / uploads.
-# Ajuster le repo Git et la branche dans le dashboard Render si besoin.
+# Render Blueprint : backend Node + disque persistant SQLite/uploads.
+# Déploie automatiquement depuis GitHub à chaque push sur `main`.
 services:
   - type: web
     name: backoffice-e-reputation-api
     runtime: node
     region: frankfurt
-    plan: starter
+    plan: starter # 7 $/mois — nécessaire pour le disque persistant
     rootDir: backend
     buildCommand: npm install
     startCommand: npm start
@@ -13,12 +13,20 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "20"
+      - key: NODE_ENV
+        value: production
       - key: DATA_DIR
         value: /data
+      - key: JWT_SECRET
+        generateValue: true # Render génère une clé aléatoire sécurisée au premier deploy
+      - key: ADMIN_EMAIL
+        sync: false # À renseigner dans le dashboard Render
+      - key: ADMIN_PASSWORD
+        sync: false # À renseigner dans le dashboard Render
+      - key: ADMIN_NAME
+        value: "Admin"
       - key: CORS_ORIGINS
-        sync: false
-      - key: BACKOFFICE_API_KEY
-        sync: false
+        sync: false # URL Vercel, à compléter après déploiement du front
     disk:
       name: bo-data
       mountPath: /data
