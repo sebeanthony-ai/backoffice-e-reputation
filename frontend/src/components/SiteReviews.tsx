@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import type { Review, ReviewStatus, SiteKey, SourceKey } from '../types';
 import { SOURCE_CONFIG, STATUS_CONFIG } from '../types';
 import { fetchReviews } from '../api';
@@ -56,6 +57,13 @@ export default function SiteReviews({ site, refreshTrigger, focus }: SiteReviews
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [sortField, setSortField] = useState<ReviewTableSortField>('published_at');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+
+  // Popover "Période" positionné dynamiquement via un portail pour qu'il ne
+  // soit pas clippé par les parents (overflow/sticky) et toujours au-dessus
+  // de tous les contextes d'empilement.
+  const dateBtnRef = useRef<HTMLButtonElement>(null);
+  const datePopRef = useRef<HTMLDivElement>(null);
+  const [datePopPos, setDatePopPos] = useState<{ top: number; left: number } | null>(null);
 
   // Avis à mettre en évidence (expand + scroll + flash) après avoir cliqué
   // sur une alerte. Défini une fois la liste chargée.
@@ -151,6 +159,46 @@ export default function SiteReviews({ site, refreshTrigger, focus }: SiteReviews
 
   const dateBtnLabel = activePreset || (hasDateFilter ? `${dateFrom || '…'} → ${dateTo || '…'}` : 'Période');
 
+  // Calcule la position du popover "Période" en fonction du bouton, et
+  // recalcule au scroll / resize. Ferme sur clic hors du popover ou Échap.
+  useLayoutEffect(() => {
+    if (!showDatePicker) { setDatePopPos(null); return; }
+    const updatePos = () => {
+      const btn = dateBtnRef.current;
+      if (!btn) return;
+      const rect = btn.getBoundingClientRect();
+      const POP_W = 360;
+      let left = rect.left;
+      if (left + POP_W > window.innerWidth - 8) left = window.innerWidth - POP_W - 8;
+      if (left < 8) left = 8;
+      setDatePopPos({ top: rect.bottom + 8, left });
+    };
+    updatePos();
+    window.addEventListener('scroll', updatePos, true);
+    window.addEventListener('resize', updatePos);
+    return () => {
+      window.removeEventListener('scroll', updatePos, true);
+      window.removeEventListener('resize', updatePos);
+    };
+  }, [showDatePicker]);
+
+  useEffect(() => {
+    if (!showDatePicker) return;
+    const onDocClick = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (datePopRef.current?.contains(t)) return;
+      if (dateBtnRef.current?.contains(t)) return;
+      setShowDatePicker(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowDatePicker(false); };
+    document.addEventListener('mousedown', onDocClick);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDocClick);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [showDatePicker]);
+
   return (
     <div className="space-y-6">
       {/* ── Toolbar ─────────────────────────────────────────── */}
@@ -170,74 +218,90 @@ export default function SiteReviews({ site, refreshTrigger, focus }: SiteReviews
         </form>
 
         {/* Date picker button */}
-        <div className="relative">
-          <button
-            onClick={() => setShowDatePicker(v => !v)}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all shadow-[0_2px_10px_-3px_rgba(0,0,0,0.05)] ${
-              hasDateFilter
-                ? 'bg-indigo-50 text-indigo-700'
-                : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-            }`}
+        <button
+          ref={dateBtnRef}
+          type="button"
+          onClick={() => setShowDatePicker(v => !v)}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all shadow-[0_2px_10px_-3px_rgba(0,0,0,0.05)] ${
+            hasDateFilter
+              ? 'bg-indigo-50 text-indigo-700'
+              : 'bg-white text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+          }`}
+        >
+          <Calendar className="w-4 h-4" />
+          <span>{dateBtnLabel}</span>
+          {hasDateFilter ? (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={e => { e.stopPropagation(); clearDate(); }}
+              className="ml-1 inline-flex opacity-60 hover:opacity-100 transition-opacity"
+              aria-label="Effacer le filtre de période"
+            >
+              <X className="w-3.5 h-3.5" />
+            </span>
+          ) : (
+            <ChevronDown className="w-3.5 h-3.5 ml-1 opacity-50" />
+          )}
+        </button>
+
+        {showDatePicker && datePopPos && createPortal(
+          <div
+            ref={datePopRef}
+            className="fixed z-[1000] bg-white border border-slate-100 rounded-2xl shadow-xl p-5 w-[360px]"
+            style={{ top: datePopPos.top, left: datePopPos.left }}
           >
-            <Calendar className="w-4 h-4" />
-            <span>{dateBtnLabel}</span>
-            {hasDateFilter
-              ? <X className="w-3.5 h-3.5 ml-1 opacity-60 hover:opacity-100 transition-opacity" onClick={e => { e.stopPropagation(); clearDate(); }} />
-              : <ChevronDown className="w-3.5 h-3.5 ml-1 opacity-50" />
-            }
-          </button>
-
-          {showDatePicker && (
-            <div className="absolute top-full left-0 mt-2 z-50 bg-white border border-slate-100 rounded-2xl shadow-xl p-5 w-[360px]">
-              <p className="text-[10px] text-slate-400 font-bold mb-3 uppercase tracking-widest">Raccourcis</p>
-              <div className="grid grid-cols-2 gap-2 mb-5">
-                {PRESETS.map(p => (
-                  <button
-                    key={p.label} onClick={() => applyPreset(p)}
-                    className={`px-3 py-2 rounded-lg text-xs text-left font-medium transition-all border ${
-                      activePreset === p.label
-                        ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
-                        : 'bg-slate-50 border-slate-100 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                    }`}
-                  >
-                    {p.label}
-                  </button>
-                ))}
-              </div>
-
-              <p className="text-[10px] text-slate-400 font-bold mb-3 uppercase tracking-widest">Période personnalisée</p>
-              <div className="flex gap-3 items-center mb-5">
-                <div className="flex-1">
-                  <label className="block text-[11px] font-semibold text-slate-500 mb-1.5">Du</label>
-                  <input type="date" value={dateFrom}
-                    onChange={e => { setDateFrom(e.target.value); setActivePreset(''); }}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 text-sm text-slate-800 focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 transition-shadow"
-                  />
-                </div>
-                <span className="text-slate-300 text-sm mt-5">→</span>
-                <div className="flex-1">
-                  <label className="block text-[11px] font-semibold text-slate-500 mb-1.5">Au</label>
-                  <input type="date" value={dateTo}
-                    onChange={e => { setDateTo(e.target.value); setActivePreset(''); }}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 text-sm text-slate-800 focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 transition-shadow"
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-between items-center pt-4 border-t border-slate-100">
-                <button onClick={clearDate} className="text-xs font-medium text-slate-400 hover:text-red-500 transition-colors">
-                  Effacer
-                </button>
+            <p className="text-[10px] text-slate-400 font-bold mb-3 uppercase tracking-widest">Raccourcis</p>
+            <div className="grid grid-cols-2 gap-2 mb-5">
+              {PRESETS.map(p => (
                 <button
-                  onClick={() => setShowDatePicker(false)}
-                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-medium transition-colors shadow-sm"
+                  type="button"
+                  key={p.label} onClick={() => applyPreset(p)}
+                  className={`px-3 py-2 rounded-lg text-xs text-left font-medium transition-all border ${
+                    activePreset === p.label
+                      ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                      : 'bg-slate-50 border-slate-100 text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                  }`}
                 >
-                  Appliquer
+                  {p.label}
                 </button>
+              ))}
+            </div>
+
+            <p className="text-[10px] text-slate-400 font-bold mb-3 uppercase tracking-widest">Période personnalisée</p>
+            <div className="flex gap-3 items-center mb-5">
+              <div className="flex-1">
+                <label className="block text-[11px] font-semibold text-slate-500 mb-1.5">Du</label>
+                <input type="date" value={dateFrom}
+                  onChange={e => { setDateFrom(e.target.value); setActivePreset(''); }}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 text-sm text-slate-800 focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 transition-shadow"
+                />
+              </div>
+              <span className="text-slate-300 text-sm mt-5">→</span>
+              <div className="flex-1">
+                <label className="block text-[11px] font-semibold text-slate-500 mb-1.5">Au</label>
+                <input type="date" value={dateTo}
+                  onChange={e => { setDateTo(e.target.value); setActivePreset(''); }}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-2 text-sm text-slate-800 focus:outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-400 transition-shadow"
+                />
               </div>
             </div>
-          )}
-        </div>
+
+            <div className="flex justify-between items-center pt-4 border-t border-slate-100">
+              <button type="button" onClick={clearDate} className="text-xs font-medium text-slate-400 hover:text-red-500 transition-colors">
+                Effacer
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowDatePicker(false)}
+                className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-medium transition-colors shadow-sm"
+              >
+                Appliquer
+              </button>
+            </div>
+          </div>,
+          document.body
+        )}
 
         {/* Filters toggle */}
         <button
