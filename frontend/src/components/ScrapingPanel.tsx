@@ -3,7 +3,7 @@ import { io } from 'socket.io-client';
 import { triggerScrapingAll, triggerScraping, fetchScrapingLogs, fetchScrapingStatus } from '../api';
 import { SITE_CONFIG, SOURCE_CONFIG } from '../types';
 import type { SiteKey, SourceKey } from '../types';
-import { RefreshCw, CheckCircle, AlertCircle, Clock } from 'lucide-react';
+import { RefreshCw, CheckCircle, AlertCircle, Clock, Layers } from 'lucide-react';
 
 const socket = io({ path: '/socket.io', transports: ['websocket', 'polling'] });
 
@@ -40,6 +40,10 @@ export default function ScrapingPanel({ onComplete }: ScrapingPanelProps) {
   const [lastRun, setLastRun] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<ProgressState | null>(null);
+  // Mode approfondi : 10 pages Trustpilot par site (~15 min) au lieu de 3 (~4 min).
+  // Utile pour reconstruire l'historique après une interruption du cron, ou
+  // récupérer un site qui a reçu un afflux d'avis (> 60 en une journée).
+  const [deepScrape, setDeepScrape] = useState(false);
 
   const loadLogs = async () => {
     const data = await fetchScrapingLogs();
@@ -97,8 +101,9 @@ export default function ScrapingPanel({ onComplete }: ScrapingPanelProps) {
     setRunningSource('manual-all');
     setProgress({ current: 0, total: SCRAPE_SOURCES.length, phase: 'start' });
     try {
-      // quick=true par défaut côté API : 3 pages Trustpilot, ~4 min total.
-      await triggerScrapingAll();
+      // quick=false (deepScrape ON) => 10 pages Trustpilot par site (~15 min).
+      // quick=true  (défaut)        => 3 pages Trustpilot par site (~4 min).
+      await triggerScrapingAll({ quick: !deepScrape });
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } })?.response?.status;
       if (status === 409) {
@@ -115,7 +120,7 @@ export default function ScrapingPanel({ onComplete }: ScrapingPanelProps) {
   const runSingle = async (site: SiteKey, source: SourceKey) => {
     setError(null);
     try {
-      await triggerScraping(site, source);
+      await triggerScraping(site, source, { quick: !deepScrape });
       setTimeout(() => { loadLogs(); onComplete?.(); }, 3000);
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } })?.response?.status;
@@ -125,20 +130,66 @@ export default function ScrapingPanel({ onComplete }: ScrapingPanelProps) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h2 className="text-xl font-bold text-slate-900">Collecte des avis</h2>
           <p className="text-slate-500 text-sm mt-1">
             Importez automatiquement les nouveaux avis depuis toutes vos sources
           </p>
         </div>
-        <button
-          onClick={runAll} disabled={running}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-white font-medium transition-colors text-sm"
-        >
-          <RefreshCw className={`w-4 h-4 ${running ? 'animate-spin' : ''}`} />
-          {running ? 'Collecte en cours...' : 'Tout synchroniser'}
-        </button>
+
+        <div className="flex items-center gap-3">
+          {/* Toggle "Scrape approfondi" :
+              - OFF (défaut) : 3 pages Trustpilot (~60 derniers avis) ≈ 4 min
+              - ON           : 10 pages Trustpilot (~200 derniers avis) ≈ 15 min */}
+          <button
+            type="button"
+            onClick={() => setDeepScrape(v => !v)}
+            disabled={running}
+            title={
+              deepScrape
+                ? 'Mode approfondi activé : 10 pages Trustpilot par site (~15 min)'
+                : 'Mode rapide : 3 pages Trustpilot par site (~4 min). Active pour un scrape complet.'
+            }
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all border disabled:opacity-50 disabled:cursor-not-allowed ${
+              deepScrape
+                ? 'bg-amber-50 border-amber-200 text-amber-800 hover:bg-amber-100'
+                : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+            }`}
+          >
+            <Layers className={`w-4 h-4 ${deepScrape ? 'text-amber-600' : 'text-slate-400'}`} />
+            <span>Approfondi</span>
+            <span
+              role="switch"
+              aria-checked={deepScrape}
+              className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${
+                deepScrape ? 'bg-amber-500' : 'bg-slate-300'
+              }`}
+            >
+              <span
+                className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${
+                  deepScrape ? 'translate-x-3.5' : 'translate-x-0.5'
+                }`}
+              />
+            </span>
+          </button>
+
+          <button
+            onClick={runAll} disabled={running}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white font-medium transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed ${
+              deepScrape
+                ? 'bg-amber-600 hover:bg-amber-500'
+                : 'bg-blue-600 hover:bg-blue-500'
+            }`}
+          >
+            <RefreshCw className={`w-4 h-4 ${running ? 'animate-spin' : ''}`} />
+            {running
+              ? 'Collecte en cours...'
+              : deepScrape
+                ? 'Scrape approfondi (~15 min)'
+                : 'Tout synchroniser (~4 min)'}
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
