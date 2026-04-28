@@ -115,15 +115,24 @@ async function dismissCookieBanner(page) {
   } catch (_) {}
 }
 
-async function scrapeTrustpilot(site, maxPages = 50) {
+async function scrapeTrustpilot(site, maxPages) {
   const baseUrl = SITES[site];
   if (!baseUrl) throw new Error(`Unknown site: ${site}`);
+
+  // Limite de pages : 10 par défaut (≈ 200 avis, largement suffisant pour la
+  // veille e-réputation quotidienne) ; ajustable via SCRAPING_MAX_PAGES.
+  // La valeur précédente (50) faisait régulièrement crasher l'instance Render
+  // 512MB en OOM avant la fin du scraping.
+  const effectiveMax = maxPages
+    ?? parseInt(process.env.SCRAPING_MAX_PAGES || '10', 10);
 
   const proxies = loadProxies();
   const proxy   = proxies.length ? pick(proxies) : null;
   const ua      = pick(USER_AGENTS);
   const vp      = pick(VIEWPORTS);
 
+  // Args optimisés pour environnements contraints en RAM (Render Starter 512MB).
+  // Voir https://github.com/puppeteer/puppeteer/blob/main/docs/troubleshooting.md
   const args = [
     '--no-sandbox',
     '--disable-setuid-sandbox',
@@ -131,6 +140,15 @@ async function scrapeTrustpilot(site, maxPages = 50) {
     '--disable-infobars',
     '--disable-dev-shm-usage',
     '--disable-gpu',
+    '--disable-extensions',
+    '--disable-software-rasterizer',
+    '--disable-background-timer-throttling',
+    '--disable-backgrounding-occluded-windows',
+    '--disable-renderer-backgrounding',
+    '--disable-features=TranslateUI,IsolateOrigins,site-per-process',
+    '--disable-ipc-flooding-protection',
+    '--disable-breakpad',
+    '--no-zygote',
     '--lang=fr-FR,fr',
     `--window-size=${vp.width},${vp.height}`,
   ];
@@ -168,11 +186,25 @@ async function scrapeTrustpilot(site, maxPages = 50) {
       window.chrome = { runtime: {} };
     });
 
+    // Bloquer images/médias/polices : énorme gain RAM/réseau, sans incidence
+    // sur le contenu (le HTML et le JSON anti-bot transitent toujours).
+    // On garde stylesheet pour ne pas casser certaines vérifs anti-bot qui
+    // observent le rendu CSS (Cloudflare/DataDome).
+    await page.setRequestInterception(true);
+    page.on('request', (req) => {
+      const type = req.resourceType();
+      if (type === 'image' || type === 'media' || type === 'font') {
+        req.abort();
+      } else {
+        req.continue();
+      }
+    });
+
     let consecutiveEmpty = 0;
     let retryCount = 0;
     const MAX_RETRIES = 2;
 
-    for (let p = 1; p <= maxPages; p++) {
+    for (let p = 1; p <= effectiveMax; p++) {
       const url = p === 1 ? baseUrl : `${baseUrl}?page=${p}`;
       console.log(`[Trustpilot] Scraping ${site} page ${p} [UA: ...${ua.slice(-30)}]`);
 

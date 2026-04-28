@@ -145,10 +145,13 @@ cron.schedule('* * * * *', () => {
   }
 });
 
-// Synchronisation automatique des avis : toutes les sources (Trustpilot, Avis Vérifiés, Signal Arnaques…)
-// — jamais « 60 Millions » (désactivé dans scrapeAndSave / liste des tâches).
-// Déclenchement : toutes les 5 minutes par défaut. Surcharge possible via SCRAPING_CRON (ex. "*/30 * * * *" = 30 min).
-const DEFAULT_SCRAPING_CRON = '*/5 * * * *';
+// Synchronisation automatique des avis : toutes les sources (Trustpilot, Avis Vérifiés, Signal Arnaques…).
+// Déclenchement : 1 fois par jour à 04:00 Europe/Paris par défaut, ce qui :
+//   - évite la pression mémoire de Chromium sur les plans Render contraints (512MB)
+//   - limite la détection anti-bot (Trustpilot bloque les fréquences trop hautes)
+// Surcharge possible via la variable d'env SCRAPING_CRON (ex. "0 */6 * * *" = toutes les 6h).
+const DEFAULT_SCRAPING_CRON = '0 4 * * *';
+const SCRAPING_TZ = process.env.SCRAPING_TZ || 'Europe/Paris';
 const scrapingCron = process.env.SCRAPING_CRON || DEFAULT_SCRAPING_CRON;
 cron.schedule(scrapingCron, async () => {
   if (scrapeState.inProgress) {
@@ -167,7 +170,7 @@ cron.schedule(scrapingCron, async () => {
     scrapeState.inProgress = false;
     io.emit('scrape_status', { inProgress: false });
   }
-});
+}, { timezone: SCRAPING_TZ });
 
 // Optionnel : une synchro au démarrage (après délai) — SCRAPING_ON_START=1
 if (process.env.SCRAPING_ON_START === '1') {
@@ -182,7 +185,7 @@ const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`\n🚀 Back Office E-Reputation API running on http://localhost:${PORT}`);
   console.log(`📊 WebSocket server ready`);
-  console.log(`🕐 Synchro auto avis (cron): ${scrapingCron}`);
+  console.log(`🕐 Synchro auto avis (cron): ${scrapingCron} [TZ ${SCRAPING_TZ}]`);
   if (process.env.SCRAPING_ON_START === '1') {
     console.log(`⏱️  Synchro au démarrage dans ${parseInt(process.env.SCRAPING_START_DELAY_MS || '20000', 10) / 1000}s\n`);
   } else {

@@ -10,6 +10,7 @@ const FORUM_URL = 'https://www.60millions-mag.com/forum/d/294228-abonnement-info
  * Flarum charge les posts au scroll — on scrolle jusqu'à épuisement.
  */
 async function scrape60Millions() {
+  // Args optimisés pour environnements contraints en RAM (Render Starter 512MB).
   const browser = await puppeteer.launch({
     headless: 'new',
     args: [
@@ -17,6 +18,15 @@ async function scrape60Millions() {
       '--disable-setuid-sandbox',
       '--disable-blink-features=AutomationControlled',
       '--disable-infobars',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--disable-extensions',
+      '--disable-software-rasterizer',
+      '--disable-background-timer-throttling',
+      '--disable-backgrounding-occluded-windows',
+      '--disable-renderer-backgrounding',
+      '--disable-breakpad',
+      '--no-zygote',
       '--lang=fr-FR',
     ],
   });
@@ -27,6 +37,17 @@ async function scrape60Millions() {
     const page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 900 });
     await page.setExtraHTTPHeaders({ 'Accept-Language': 'fr-FR,fr;q=0.9' });
+
+    // Bloquer images/médias/polices : énorme gain RAM/réseau.
+    await page.setRequestInterception(true);
+    page.on('request', (req) => {
+      const type = req.resourceType();
+      if (type === 'image' || type === 'media' || type === 'font') {
+        req.abort();
+      } else {
+        req.continue();
+      }
+    });
 
     console.log('[60Millions] Chargement du fil de discussion...');
     await page.goto(FORUM_URL, { waitUntil: 'networkidle2', timeout: 45000 });
