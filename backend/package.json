@@ -15,6 +15,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@sparticuz/chromium": "^131.0.1",
     "axios": "^1.15.0",
     "bcryptjs": "^2.4.3",
     "better-sqlite3": "^12.9.0",
@@ -27,6 +28,7 @@
     "multer": "^2.1.1",
     "node-cron": "^4.2.1",
     "puppeteer": "^24.40.0",
+    "puppeteer-core": "^24.40.0",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
     "socket.io": "^4.8.3"

@@ -7,10 +7,11 @@ services:
     region: frankfurt
     plan: starter # 7 $/mois — nécessaire pour le disque persistant
     rootDir: backend
-    # Installe les deps + force le téléchargement de Chromium dans un cache persistant.
-    # Sans `puppeteer browsers install chrome`, Render purge le cache par défaut entre
-    # les builds et Puppeteer crashe avec « Could not find Chrome » au runtime.
-    buildCommand: npm install && npx puppeteer browsers install chrome
+    # @sparticuz/chromium embarque Chromium dans node_modules (~50MB), pas
+    # besoin de puppeteer browsers install ni de PUPPETEER_CACHE_DIR.
+    # On désactive le download du Chrome standard de Puppeteer (gain de
+    # ~120MB de build et plus de fragilité de cache).
+    buildCommand: PUPPETEER_SKIP_DOWNLOAD=true npm install
     startCommand: npm start
     healthCheckPath: /api/health
     envVars:
@@ -20,9 +21,6 @@ services:
         value: production
       - key: DATA_DIR
         value: /data
-      # Cache Puppeteer dans le dossier projet (persistant entre builds Render).
-      - key: PUPPETEER_CACHE_DIR
-        value: /opt/render/project/src/.cache/puppeteer
       - key: JWT_SECRET
         generateValue: true # Render génère une clé aléatoire sécurisée au premier deploy
       - key: ADMIN_EMAIL

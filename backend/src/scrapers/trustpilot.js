@@ -1,7 +1,4 @@
-const puppeteer = require('puppeteer-extra');
-const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-
-puppeteer.use(StealthPlugin());
+const { launchBrowser } = require('./browserLauncher');
 
 const SITES = {
   infonet:        'https://fr.trustpilot.com/review/infonet.fr',
@@ -131,33 +128,21 @@ async function scrapeTrustpilot(site, maxPages) {
   const ua      = pick(USER_AGENTS);
   const vp      = pick(VIEWPORTS);
 
-  // Args optimisés pour environnements contraints en RAM (Render Starter 512MB).
-  // Voir https://github.com/puppeteer/puppeteer/blob/main/docs/troubleshooting.md
-  const args = [
-    '--no-sandbox',
-    '--disable-setuid-sandbox',
+  // En prod, @sparticuz/chromium fournit déjà un set d'args RAM-saving
+  // adaptés aux environnements contraints (--single-process, etc.).
+  // On n'ajoute que les flags spécifiques au scraping anti-bot/locale.
+  const extraArgs = [
     '--disable-blink-features=AutomationControlled',
     '--disable-infobars',
-    '--disable-dev-shm-usage',
-    '--disable-gpu',
-    '--disable-extensions',
-    '--disable-software-rasterizer',
-    '--disable-background-timer-throttling',
-    '--disable-backgrounding-occluded-windows',
-    '--disable-renderer-backgrounding',
-    '--disable-features=TranslateUI,IsolateOrigins,site-per-process',
-    '--disable-ipc-flooding-protection',
-    '--disable-breakpad',
-    '--no-zygote',
     '--lang=fr-FR,fr',
     `--window-size=${vp.width},${vp.height}`,
   ];
 
   if (proxy) {
-    args.push(`--proxy-server=http://${proxy.host}:${proxy.port}`);
+    extraArgs.push(`--proxy-server=http://${proxy.host}:${proxy.port}`);
   }
 
-  const browser = await puppeteer.launch({ headless: 'new', args });
+  const browser = await launchBrowser({ extraArgs, viewport: { width: vp.width, height: vp.height } });
   const reviews = [];
 
   try {

@@ -1,7 +1,4 @@
-const puppeteer = require('puppeteer-extra');
-const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-
-puppeteer.use(StealthPlugin());
+const { launchBrowser } = require('./browserLauncher');
 
 const FORUM_URL = 'https://www.60millions-mag.com/forum/d/294228-abonnement-info-net';
 
@@ -10,32 +7,20 @@ const FORUM_URL = 'https://www.60millions-mag.com/forum/d/294228-abonnement-info
  * Flarum charge les posts au scroll — on scrolle jusqu'à épuisement.
  */
 async function scrape60Millions() {
-  // Args optimisés pour environnements contraints en RAM (Render Starter 512MB).
-  const browser = await puppeteer.launch({
-    headless: 'new',
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
+  // En prod, @sparticuz/chromium gère les flags RAM-saving (Render Starter 512MB).
+  const browser = await launchBrowser({
+    extraArgs: [
       '--disable-blink-features=AutomationControlled',
       '--disable-infobars',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-      '--disable-extensions',
-      '--disable-software-rasterizer',
-      '--disable-background-timer-throttling',
-      '--disable-backgrounding-occluded-windows',
-      '--disable-renderer-backgrounding',
-      '--disable-breakpad',
-      '--no-zygote',
       '--lang=fr-FR',
     ],
+    viewport: { width: 1280, height: 900 },
   });
 
   const reviews = [];
 
   try {
     const page = await browser.newPage();
-    await page.setViewport({ width: 1280, height: 900 });
     await page.setExtraHTTPHeaders({ 'Accept-Language': 'fr-FR,fr;q=0.9' });
 
     // Bloquer images/médias/polices : énorme gain RAM/réseau.
