@@ -4,14 +4,25 @@ const { scrapeAvisVerifies } = require('./avisVerifies');
 const { scrapeSignalArnaques } = require('./otherSources');
 const { scrape60Millions } = require('./soixanteMillions');
 
-async function scrapeAndSave(site, source) {
+/**
+ * Scrape une combinaison site/source et persiste les nouveaux avis.
+ *
+ * @param {string} site
+ * @param {string} source
+ * @param {object} [opts]
+ * @param {number} [opts.maxPages] - limite de pages pour les scrapers paginés
+ *   (Trustpilot principalement). Quand omis, le scraper applique son défaut
+ *   (10 pages, configurable via SCRAPING_MAX_PAGES).
+ */
+async function scrapeAndSave(site, source, opts = {}) {
   const db = getDb();
+  const { maxPages } = opts;
   let reviews = [];
   let error = null;
 
   try {
     if (source === 'trustpilot') {
-      reviews = await scrapeTrustpilot(site);
+      reviews = await scrapeTrustpilot(site, maxPages);
     } else if (source === 'avis-verifies') {
       reviews = await scrapeAvisVerifies(site);
     } else if (source === 'signal-arnaques') {
@@ -73,7 +84,15 @@ async function scrapeAndSave(site, source) {
   }
 }
 
-async function scrapeAll(io) {
+/**
+ * Lance le scraping séquentiel de toutes les sources.
+ *
+ * @param {import('socket.io').Server} [io]
+ * @param {object} [opts]
+ * @param {number} [opts.maxPages] - propagé à chaque scrapeAndSave
+ * @param {string} [opts.trigger] - libellé pour le frontend ('manual' / 'cron')
+ */
+async function scrapeAll(io, opts = {}) {
   const tasks = [
     { site: 'infonet',         source: 'trustpilot' },
     { site: 'postmee',         source: 'trustpilot' },
@@ -86,27 +105,67 @@ async function scrapeAll(io) {
     { site: 'infonet',         source: '60millions' },
   ];
 
+  const total = tasks.length;
   const results = [];
-  for (const task of tasks) {
+
+  for (let i = 0; i < tasks.length; i++) {
+    const task = tasks[i];
+    const current = i + 1;
+
+    // Notifie le frontend AVANT de démarrer cette tâche, pour mettre à jour
+    // l'indicateur "X/N — site · source" pendant le travail (sinon le label
+    // ne change qu'à la fin de la tâche, ce qui paraît figé).
+    if (io) {
+      io.emit('scrape_progress', {
+        current,
+        total,
+        site: task.site,
+        source: task.source,
+        phase: 'start',
+      });
+    }
+
     try {
-      const result = await scrapeAndSave(task.site, task.source);
+      const result = await scrapeAndSave(task.site, task.source, {
+        maxPages: opts.maxPages,
+      });
       results.push({ ...task, ...result });
 
-      if (io && (result.newReviews > 0 || result.updated > 0)) {
-        io.emit('reviews_synced', {
+      if (io) {
+        io.emit('scrape_progress', {
+          current,
+          total,
           site: task.site,
           source: task.source,
-          inserted: result.newReviews,
-          updated: result.updated,
+          phase: 'done',
+          result: { newReviews: result.newReviews, updated: result.updated },
         });
-      }
-      if (io && result.newReviews > 0) {
-        io.emit('new_reviews', { site: task.site, source: task.source, count: result.newReviews });
+        if (result.newReviews > 0 || result.updated > 0) {
+          io.emit('reviews_synced', {
+            site: task.site,
+            source: task.source,
+            inserted: result.newReviews,
+            updated: result.updated,
+          });
+        }
+        if (result.newReviews > 0) {
+          io.emit('new_reviews', { site: task.site, source: task.source, count: result.newReviews });
+        }
       }
 
       await sleep(2000);
     } catch (err) {
       results.push({ ...task, success: false, error: err.message });
+      if (io) {
+        io.emit('scrape_progress', {
+          current,
+          total,
+          site: task.site,
+          source: task.source,
+          phase: 'error',
+          error: err.message,
+        });
+      }
     }
   }
 

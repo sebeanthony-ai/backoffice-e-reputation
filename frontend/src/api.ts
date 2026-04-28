@@ -172,11 +172,18 @@ export const unsaveReviewFromHistorique = (id: number): Promise<{ ok: boolean }>
 
 // ── Scraping ────────────────────────────────────────────────────────────────
 
-export const triggerScraping = (site?: string, source?: string): Promise<void> =>
-  api.post('/scraping/run', { site, source }).then(r => r.data);
+export const triggerScraping = (
+  site?: string,
+  source?: string,
+  opts: { quick?: boolean } = {}
+): Promise<void> =>
+  api.post('/scraping/run', { site, source, quick: opts.quick ?? true }).then(r => r.data);
 
-export const triggerScrapingAll = (): Promise<void> =>
-  api.post('/scraping/run-all').then(r => r.data);
+// Le bouton "Tout synchroniser" du back-office passe quick=true par défaut :
+// 3 pages Trustpilot par site (~4 min) au lieu de 10 (~15 min).
+// Le cron quotidien (4h) déclenché côté backend ignore ce flag et reste à 10 pages.
+export const triggerScrapingAll = (opts: { quick?: boolean } = {}): Promise<void> =>
+  api.post('/scraping/run-all', { quick: opts.quick ?? true }).then(r => r.data);
 
 export const fetchScrapingLogs = () =>
   api.get('/scraping/logs').then(r => r.data);

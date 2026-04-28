@@ -25,12 +25,21 @@ const SCRAPE_SOURCES: { site: SiteKey; source: SourceKey; label: string }[] = [
   { site: 'infonet',  source: '60millions',      label: 'Infonet · 60 Millions Conso' },
 ];
 
+interface ProgressState {
+  current: number;
+  total: number;
+  site?: string;
+  source?: string;
+  phase: 'start' | 'done' | 'error';
+}
+
 export default function ScrapingPanel({ onComplete }: ScrapingPanelProps) {
   const [logs, setLogs] = useState<ScrapingLog[]>([]);
   const [running, setRunning] = useState(false);
   const [runningSource, setRunningSource] = useState<string | null>(null);
   const [lastRun, setLastRun] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<ProgressState | null>(null);
 
   const loadLogs = async () => {
     const data = await fetchScrapingLogs();
@@ -50,12 +59,24 @@ export default function ScrapingPanel({ onComplete }: ScrapingPanelProps) {
     socket.on('scrape_status', ({ inProgress, source }: { inProgress: boolean; source?: string }) => {
       setRunning(inProgress);
       setRunningSource(inProgress ? (source ?? 'en cours…') : null);
-      if (!inProgress) { loadLogs(); onComplete?.(); }
+      if (!inProgress) {
+        setProgress(null);
+        loadLogs();
+        onComplete?.();
+      }
+    });
+
+    socket.on('scrape_progress', (p: ProgressState) => {
+      setProgress(p);
+      // Sur 'done' on rafraîchit les logs pour cocher les sources terminées
+      // sans attendre la fin de toute la batch.
+      if (p.phase === 'done') loadLogs();
     });
 
     socket.on('scrape_all_complete', () => {
       setRunning(false);
       setRunningSource(null);
+      setProgress(null);
       loadLogs();
       onComplete?.();
     });
@@ -64,6 +85,7 @@ export default function ScrapingPanel({ onComplete }: ScrapingPanelProps) {
 
     return () => {
       socket.off('scrape_status');
+      socket.off('scrape_progress');
       socket.off('scrape_all_complete');
       socket.off('scrape_complete');
     };
@@ -73,7 +95,9 @@ export default function ScrapingPanel({ onComplete }: ScrapingPanelProps) {
     setError(null);
     setRunning(true);
     setRunningSource('manual-all');
+    setProgress({ current: 0, total: SCRAPE_SOURCES.length, phase: 'start' });
     try {
+      // quick=true par défaut côté API : 3 pages Trustpilot, ~4 min total.
       await triggerScrapingAll();
     } catch (err: unknown) {
       const status = (err as { response?: { status?: number } })?.response?.status;
@@ -84,6 +108,7 @@ export default function ScrapingPanel({ onComplete }: ScrapingPanelProps) {
       }
       setRunning(false);
       setRunningSource(null);
+      setProgress(null);
     }
   };
 
@@ -123,12 +148,6 @@ export default function ScrapingPanel({ onComplete }: ScrapingPanelProps) {
             Dernière sync : {new Date(lastRun).toLocaleString('fr-FR')}
           </div>
         )}
-        {running && (
-          <div className="flex items-center gap-2 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-            <RefreshCw className="w-4 h-4 animate-spin" />
-            {runningSource === 'cron' ? 'Synchronisation automatique en cours…' : 'Synchronisation manuelle en cours…'}
-          </div>
-        )}
         {error && (
           <div className="flex items-center gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
             <AlertCircle className="w-4 h-4" />
@@ -136,6 +155,56 @@ export default function ScrapingPanel({ onComplete }: ScrapingPanelProps) {
           </div>
         )}
       </div>
+
+      {/* Bandeau de progression — affiché pendant tout le scraping */}
+      {running && (
+        <div className="bg-white border border-amber-200 rounded-2xl p-4 shadow-[0_2px_10px_-3px_rgba(0,0,0,0.05)]">
+          <div className="flex items-start gap-3 mb-3">
+            <RefreshCw className="w-5 h-5 text-amber-600 animate-spin mt-0.5 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-slate-900">
+                {runningSource === 'cron'
+                  ? 'Synchronisation automatique en cours…'
+                  : 'Synchronisation manuelle en cours…'}
+              </div>
+              {progress && progress.total > 0 ? (
+                <div className="text-xs text-slate-500 mt-0.5">
+                  {progress.current > 0 ? (
+                    <>
+                      Étape <span className="font-medium text-slate-700">{progress.current}/{progress.total}</span>
+                      {progress.site && progress.source && (
+                        <>
+                          {' — '}
+                          <span className="font-medium text-slate-700">
+                            {SITE_CONFIG[progress.site as SiteKey]?.label || progress.site}
+                          </span>
+                          {' · '}
+                          {SOURCE_CONFIG[progress.source as SourceKey]?.label || progress.source}
+                        </>
+                      )}
+                    </>
+                  ) : (
+                    <>Préparation…</>
+                  )}
+                </div>
+              ) : (
+                <div className="text-xs text-slate-500 mt-0.5">
+                  Cela peut prendre quelques minutes — vous pouvez continuer à travailler.
+                </div>
+              )}
+            </div>
+          </div>
+
+          {progress && progress.total > 0 && (
+            <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-amber-500 transition-all duration-500 ease-out"
+                style={{ width: `${Math.min(100, (progress.current / progress.total) * 100)}%` }}
+              />
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Individual sources */}
       <div>
